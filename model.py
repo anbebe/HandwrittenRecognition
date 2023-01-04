@@ -2,12 +2,12 @@ import tensorflow as tf
 
 class ConvModel(tf.keras.Model):
 
-  #1 Constructor
-  def __init__(self):
+  #1 Constructors
+  def __init__(self, batch_norm=False, dropout=False, dropout_rate=0, L2_reg=0):
     super(ConvModel, self).__init__()
     #inherit functionality from parent class
 
-    #kernel_regularizer=tf.keras.regularizers.L2()
+    kernel_regularizer=tf.keras.regularizers.L2()
 
     #optimizer, loss function and metrics
     self.metrics_list = [
@@ -16,33 +16,37 @@ class ConvModel(tf.keras.Model):
                        ]
     self.optimizer = tf.keras.optimizers.Adam()
     self.loss = tf.keras.losses.CategoricalCrossentropy()
+    self.kernel_regularizer=tf.keras.regularizers.L2(L2_reg) if L2_reg else None
+    self.dropout = dropout
+    if self.dropout:
+      self.dropout_layer = tf.keras.layers.Dropout(dropout_rate)
 
     # layers to be used
-    self.convlayer1 = tf.keras.layers.Conv2D(filters=32, kernel_size=3, padding='same', activation='relu')
-    self.convlayer2 = tf.keras.layers.Conv2D(filters=32, kernel_size=3, padding='same', activation='relu')
-    self.pooling = tf.keras.layers.MaxPooling2D(pool_size=2, strides=2)
-
-    self.convlayer3 = tf.keras.layers.Conv2D(filters=64, kernel_size=3, padding='same', activation='relu')
-    self.convlayer4 = tf.keras.layers.Conv2D(filters=64, kernel_size=3, padding='same', activation='relu')
-    self.pooling2 = tf.keras.layers.GlobalAveragePooling2D()
-
-    self.dense = tf.keras.layers.Dense(1024, activation='relu')
-    self.dropout_layer = tf.keras.layers.Dropout(0.2)
-    self.out = tf.keras.layers.Dense(6, activation='softmax')
+    self.cnn_layers = []
+    self.cnn_layers.append(tf.keras.layers.Conv2D(filters=32, kernel_size=3, padding='same', activation='relu'))
+    self.cnn_layers.append(tf.keras.layers.Conv2D(filters=32, kernel_size=3, padding='same', activation='relu'))
+    if batch_norm: 
+      self.cnn_layers.append(tf.keras.layers.BatchNormalization())
+    self.cnn_layers.append(tf.keras.layers.MaxPooling2D(pool_size=2, strides=2))
+    self.cnn_layers.append(tf.keras.layers.Conv2D(filters=64, kernel_size=3, padding='same', activation='relu'))
+    self.cnn_layers.append(tf.keras.layers.Conv2D(filters=64, kernel_size=3, padding='same', activation='relu'))
+    if batch_norm: 
+      self.cnn_layers.append(tf.keras.layers.BatchNormalization())
+    self.cnn_layers.append(tf.keras.layers.GlobalAveragePooling2D())
+    self.cnn_layers.append(tf.keras.layers.Dense(1024, activation='relu'))
+    if batch_norm: 
+      self.cnn_layers.append(tf.keras.layers.BatchNormalization())
+    self.cnn_layers.append(tf.keras.layers.Dense(6, activation='softmax'))
 
 
   #2. call method (forward computation)
-  def call(self, img, training=False):
-    x = self.convlayer1(img)
-    x = self.convlayer2(x)
-    x = self.pooling(x)
-    x = self.convlayer3(x)
-    x = self.convlayer4(x)
-    x = self.pooling2(x)
-    x = self.dense(x)
-    #x = self.dropout_layer(x)
-
-    return self.out(x)
+  @tf.function
+  def call(self, x, training=False):
+    for index, layer in enumerate(self.cnn_layers):
+        x = layer(x)
+        if self.dropout and index < len(self.cnn_layers)-1:
+          x = self.dropout_layer(x, training)
+    return x
 
   #3. metrics property
   @property
